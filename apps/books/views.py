@@ -20,7 +20,7 @@ class BookViewSet(viewsets.ModelViewSet):
     queryset = Book.objects.all()
     serializer_class = BookSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ['title', 'author__name']
+    search_fields = ['title']
 
     @action(detail=False, methods=['post'])
     def search_similarity(self, request):

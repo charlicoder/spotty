@@ -1,0 +1,10 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "spotter-app"
+resolve_s3 = true
+s3_prefix = "spotter-app"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ParamImage=\"166447183694.dkr.ecr.us-east-1.amazonaws.com/spotter:latest\" Cpu=\"512\" Memory=\"1024\" SharedVpcId=\"vpc-02f2802fdaa1f3694\" PrivateSubnetAId=\"subnet-00d023772bb14981c\" PrivateSubnetBId=\"subnet-0fc6c1108d7064384\""
+image_repositories = []

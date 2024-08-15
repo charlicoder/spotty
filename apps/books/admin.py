@@ -9,4 +9,4 @@ class AuthorAdmin(admin.ModelAdmin):
 
 @admin.register(Book)
 class BookAdmin(admin.ModelAdmin):
-    list_display = ['id', 'title', 'description', 'publisher', 'series_name', 'average_rating', 'author']
+    list_display = ['id', 'title', 'description', 'publisher', 'series_name', 'average_rating']

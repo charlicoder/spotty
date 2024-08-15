@@ -19,13 +19,14 @@ class Author(models.Model):
 
 
 class Book(models.Model):
-    id = models.CharField(max_length=12, primary_key=True)
-    title = models.CharField(max_length=100, blank=False, null=False)
-    description = models.TextField(max_length=500, blank=True, null=True)
-    publisher = models.CharField(max_length=100, blank=True, null=True)
-    series_name = models.CharField(max_length=100, blank=True, null=True)
+    id = models.CharField(max_length=20, primary_key=True)
+    title = models.CharField(max_length=500, blank=False, null=False)
+    description = models.TextField(max_length=1000, blank=True, null=True)
+    publisher = models.CharField(max_length=200, blank=True, null=True)
+    series_name = models.CharField(max_length=200, blank=True, null=True)
     average_rating = models.FloatField(default=0.0, blank=True, null=True)
-    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    # author = models.ForeignKey(Author, on_delete=models.SET_NULL, blank=True, null=True)
+    authorid = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
         return self.title
