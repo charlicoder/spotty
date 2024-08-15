@@ -1,0 +1,288 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'This stack deploys a REST API service developed using FastAPI to return
+  vectors
+
+  '
+Parameters:
+  ParamImage:
+    Type: String
+  Cpu:
+    Type: Number
+    Default: 512
+  Memory:
+    Type: Number
+    Default: 1024
+  SharedVpcId:
+    Type: String
+    Description: The ID of the existing shared VPC
+  PrivateSubnetAId:
+    Type: String
+    Description: The ID of the existing private subnet A
+  PrivateSubnetBId:
+    Type: String
+    Description: The ID of the existing private subnet B
+Resources:
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      SecurityGroups:
+      - Ref: LoadBalancerSG
+      Subnets:
+      - Ref: PrivateSubnetAId
+      - Ref: PrivateSubnetBId
+      Type: application
+  LoadBalancerListenerTargetGroupECS:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+        Ref: SharedVpcId
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '8000'
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - TargetGroupArn:
+          Ref: LoadBalancerListenerTargetGroupECS
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 8000
+      Protocol: HTTP
+  ECSFargateCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName:
+        Fn::Sub: ${AWS::StackName}-ecs-cluster
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /ecs/${AWS::StackName}
+      RetentionInDays: 14
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Ref: ECSFargateCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      EnableECSManagedTags: false
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+      - ContainerName:
+          Fn::Sub: ${AWS::StackName}-ecs-container
+        ContainerPort: 8000
+        TargetGroupArn:
+          Ref: LoadBalancerListenerTargetGroupECS
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: ECSSecurityGroup
+          Subnets:
+          - Ref: PrivateSubnetAId
+          - Ref: PrivateSubnetBId
+      TaskDefinition:
+        Ref: ECSServiceTaskDefinition
+    DependsOn:
+    - LoadBalancerListenerTargetGroupECS
+    - LoadBalancerListener
+    - CloudWatchLogGroup
+  ECSServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+      - Essential: true
+        Image:
+          Ref: ParamImage
+        Name:
+          Fn::Sub: ${AWS::StackName}-ecs-container
+        PortMappings:
+        - ContainerPort: 8000
+          Protocol: tcp
+      Cpu:
+        Ref: Cpu
+      ExecutionRoleArn:
+        Fn::GetAtt:
+        - ECSTaskExecutionRole
+        - Arn
+      Memory:
+        Ref: Memory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+      TaskRoleArn:
+        Fn::GetAtt:
+        - ECSTaskRole
+        - Arn
+  VpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-vpc-link
+      SubnetIds:
+      - Ref: PrivateSubnetAId
+      - Ref: PrivateSubnetBId
+      SecurityGroupIds: []
+  APIGWHTTPEndpoint:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-api-endpoint
+      ProtocolType: HTTP
+  APIGWHTTPEndpointIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: APIGWHTTPEndpoint
+      IntegrationType: HTTP_PROXY
+      ConnectionId:
+        Ref: VpcLink
+      ConnectionType: VPC_LINK
+      IntegrationMethod: ANY
+      IntegrationUri:
+        Ref: LoadBalancerListener
+      PayloadFormatVersion: '1.0'
+    DependsOn:
+    - VpcLink
+    - APIGWHTTPEndpoint
+    - LoadBalancerListener
+  APIGWRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: APIGWHTTPEndpoint
+      RouteKey: ANY /{proxy+}
+      Target:
+        Fn::Join:
+        - /
+        - - integrations
+          - Ref: APIGWHTTPEndpointIntegration
+    DependsOn:
+    - APIGWHTTPEndpointIntegration
+  APIStageDefault:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: APIGWHTTPEndpoint
+      StageName: $default
+      AutoDeploy: true
+    DependsOn:
+    - APIGWHTTPEndpoint
+  VPCEndpointECR:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName:
+        Fn::Sub: com.amazonaws.${AWS::Region}.ecr.api
+      VpcId:
+        Ref: SharedVpcId
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+      - Ref: PrivateSubnetAId
+      - Ref: PrivateSubnetBId
+      SecurityGroupIds:
+      - Ref: ECSSecurityGroup
+  VPCEndpointECRDocker:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName:
+        Fn::Sub: com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcId:
+        Ref: SharedVpcId
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+      - Ref: PrivateSubnetAId
+      - Ref: PrivateSubnetBId
+      SecurityGroupIds:
+      - Ref: ECSSecurityGroup
+  LoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: LoadBalancer Security Group
+      VpcId:
+        Ref: SharedVpcId
+      SecurityGroupIngress:
+      - CidrIp: '0.0.0.0/0'
+        Description: Allow from anyone on port 8000
+        FromPort: 8000
+        IpProtocol: tcp
+        ToPort: 8000
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId:
+        Ref: SharedVpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 8000
+        ToPort: 8000
+        SourceSecurityGroupId:
+          Fn::GetAtt:
+          - LoadBalancerSG
+          - GroupId
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+      - CidrIp: '0.0.0.0/0'
+        IpProtocol: '-1'
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: '2012-10-17'
+      Policies:
+      - PolicyName:
+          Fn::Sub: ${AWS::StackName}-task-execution-policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - ecr:GetDownloadUrlForLayer
+            - ecr:BatchGetImage
+            - ecr:BatchCheckLayerAvailability
+            - ecr:GetAuthorizationToken
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: '*'
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: '2012-10-17'
+Outputs:
+  APIGWEndpoint:
+    Description: API Gateway Endpoint
+    Value:
+      Fn::GetAtt:
+      - APIGWHTTPEndpoint
+      - ApiEndpoint

@@ -2,12 +2,21 @@ from django.contrib import admin
 from django.urls import path, include
 from django.urls import path, include
 from django.contrib.auth.models import User
-from rest_framework import routers, serializers, viewsets
+from django.http import JsonResponse
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView
 )
+
+def health_check(request):
+    data = {
+        'message': 'Hello, world!',
+        'status': 'success'
+    }
+    return JsonResponse(data, status=200)
 
 # # Serializers define the API representation.
 # class UserSerializer(serializers.HyperlinkedModelSerializer):
@@ -26,6 +35,7 @@ from rest_framework_simplejwt.views import (
 
 
 urlpatterns = [
+    path('health/', health_check),
     path('admin/', admin.site.urls),
 
     path('', include('apps.books.urls')),

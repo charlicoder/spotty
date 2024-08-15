@@ -8,11 +8,11 @@ ENV PYTHONUNBUFFERED 1
 WORKDIR /app
 
 # Install system dependencies
-# RUN apt-get update && apt-get install -y \
-#     gcc \
-#     python3-dev \
-#     libpq-dev \
-#     libcurl4-openssl-dev
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    libcurl4-openssl-dev
 
 # Install Python dependencies
 COPY requirements.txt .
